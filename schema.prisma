@@ -14,27 +14,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Paciente
+/* =========================
+   NÚCLEO CLÍNICO
+   ========================= */
+
 model Patient {
-  id              String      @id @default(uuid())           @map("id")
-  documentType    String                                      @map("document_type")
-  documentNumber  String                                      @map("document_number")
-  firstName       String?                                     @map("first_name")
-  lastName        String?                                     @map("last_name")
-  birthDate       DateTime?                                   @map("birth_date")
+  id              String     @id @default(uuid())            @map("id")
+  documentType    String                                     @map("document_type")
+  documentNumber  String                                     @map("document_number")
+  firstName       String?                                    @map("first_name")
+  lastName        String?                                    @map("last_name")
+  birthDate       DateTime?                                  @map("birth_date")
 
   encounters      Encounter[]
 
-  createdAt       DateTime   @default(now())                  @map("created_at")
-  updatedAt       DateTime   @updatedAt                       @map("updated_at")
-  deletedAt       DateTime?                                   @map("deleted_at")
-  isActive        Boolean    @default(true)                   @map("is_active")
+  // 🔹 Relaciones inversas requeridas por RIPS:
+  ripsUS          RipsUS[]
+  ripsAC          RipsAC[]
+  ripsAP          RipsAP[]
+  ripsAM          RipsAM[]
+  ripsAH          RipsAH[]
+  ripsAU          RipsAU[]
+  ripsAT          RipsAT[]
+
+  createdAt       DateTime   @default(now())                 @map("created_at")
+  updatedAt       DateTime   @updatedAt                      @map("updated_at")
+  deletedAt       DateTime?                                  @map("deleted_at")
+  isActive        Boolean    @default(true)                  @map("is_active")
 
   @@unique([documentType, documentNumber])
   @@map("patient")
 }
 
-// Prestador
 model Provider {
   id               String      @id @default(uuid())          @map("id")
   name             String                                     @map("name")
@@ -42,103 +53,207 @@ model Provider {
 
   encounters       Encounter[]
   clinicalNotes    ClinicalNote[]
-  prescriptions    Prescription[]  // <-- relación inversa con issuer
+  prescriptions    Prescription[]
 
-  createdAt        DateTime   @default(now())                 @map("created_at")
-  updatedAt        DateTime   @updatedAt                      @map("updated_at")
+  createdAt        DateTime   @default(now())                @map("created_at")
+  updatedAt        DateTime   @updatedAt                     @map("updated_at")
   deletedAt        DateTime?                                  @map("deleted_at")
   isActive         Boolean    @default(true)                  @map("is_active")
 
   @@map("provider")
 }
 
-// Encuentro
 model Encounter {
-  id            String        @id @default(uuid())            @map("id")
-  patientId     String                                        @map("patient_id")
-  providerId    String?                                       @map("provider_id")
-  billingMode   String                                        @map("billing_mode")
-  startAt       DateTime      @default(now())                 @map("start_at")
-  endAt         DateTime?                                     @map("end_at")
-  type          String                                        @map("type")
+  id            String         @id @default(uuid())           @map("id")
+  patientId     String                                      @map("patient_id")
+  providerId    String?                                     @map("provider_id")
+  billingMode   String                                      @map("billing_mode")    // 'RIPS' | 'PRIVATE'
+  startAt       DateTime       @default(now())               @map("start_at")
+  endAt         DateTime?                                    @map("end_at")
+  type          String                                      @map("type")            // ambulatorio/urgencias/hospital
 
   clinicalNotes ClinicalNote[]
   prescriptions Prescription[]
+  procedures    Procedure[]
 
-  patient       Patient    @relation(fields: [patientId], references: [id])
-  provider      Provider?  @relation(fields: [providerId], references: [id])
+  // 🔹 Relaciones inversas requeridas por RIPS:
+  ripsBatchItems RipsBatchItem[]
+  ripsAC         RipsAC[]
+  ripsAP         RipsAP[]
+  ripsAM         RipsAM[]
+  ripsAH         RipsAH[]
+  ripsAU         RipsAU[]
+  ripsAT         RipsAT[]
 
-  createdAt     DateTime   @default(now())                    @map("created_at")
-  updatedAt     DateTime   @updatedAt                         @map("updated_at")
-  deletedAt     DateTime?                                     @map("deleted_at")
-  isActive      Boolean    @default(true)                     @map("is_active")
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  provider      Provider? @relation(fields: [providerId], references: [id])
+
+  createdAt     DateTime   @default(now())                   @map("created_at")
+  updatedAt     DateTime   @updatedAt                        @map("updated_at")
+  deletedAt     DateTime?                                    @map("deleted_at")
+  isActive      Boolean    @default(true)                    @map("is_active")
 
   @@map("encounter")
 }
 
-// Nota clínica
+/* -------------------------
+   Nota clínica (+ dx CIE10)
+   ------------------------- */
 model ClinicalNote {
-  id          String    @id @default(uuid())                  @map("id")
-  encounterId String                                        @map("encounter_id")
-  authorId    String                                        @map("author_id")
-  noteType    String                                        @map("note_type")
-  body        String?                                       @map("body")
+  id                String    @id @default(uuid())           @map("id")
+  encounterId       String                                   @map("encounter_id")
+  authorId          String                                   @map("author_id")
+  noteType          String                                   @map("note_type")
+  body              String?                                  @map("body")
 
-  encounter   Encounter @relation(fields: [encounterId], references: [id])
-  author      Provider  @relation(fields: [authorId], references: [id])
+  // Diagnóstico principal referenciado a CIE10 (opcional)
+  primaryCie10Code  String?                                  @map("primary_cie10_code")
+  primaryDx         Cie10?    @relation(fields: [primaryCie10Code], references: [code])
 
-  createdAt   DateTime   @default(now())                      @map("created_at")
-  updatedAt   DateTime   @updatedAt                           @map("updated_at")
-  deletedAt   DateTime?                                       @map("deleted_at")
-  isActive    Boolean    @default(true)                       @map("is_active")
+  encounter         Encounter  @relation(fields: [encounterId], references: [id])
+  author            Provider   @relation(fields: [authorId], references: [id])
+
+  createdAt         DateTime   @default(now())               @map("created_at")
+  updatedAt         DateTime   @updatedAt                    @map("updated_at")
+  deletedAt         DateTime?                                @map("deleted_at")
+  isActive          Boolean    @default(true)                @map("is_active")
 
   @@map("clinical_note")
 }
 
-// Catálogo de medicamentos
+/* -------------------------
+   Procedimientos (CUPS) por encuentro
+   ------------------------- */
+model Procedure {
+  id           String    @id @default(uuid())                @map("id")
+  encounterId  String                                     @map("encounter_id")
+  cupsCode     String                                     @map("cups_code")
+  performedAt  DateTime?                                  @map("performed_at")
+  quantity     Decimal?                                   @map("quantity")
+  notes        String?                                    @map("notes")
+
+  encounter    Encounter @relation(fields: [encounterId], references: [id])
+  cups         Cups      @relation(fields: [cupsCode], references: [code])
+
+  createdAt    DateTime  @default(now())                    @map("created_at")
+  updatedAt    DateTime  @updatedAt                         @map("updated_at")
+  deletedAt    DateTime?                                    @map("deleted_at")
+  isActive     Boolean   @default(true)                     @map("is_active")
+
+  @@map("procedure")
+}
+
+/* =========================
+   CATÁLOGOS
+   ========================= */
+
+model Cie10 {
+  code             String   @id                              @map("code")
+  name             String                                   @map("name")
+  description      String?                                  @map("description")
+  sexoAplica       String?                                  @map("sexo_aplica")
+  edadMin          Int?                                     @map("edad_min")
+  edadMax          Int?                                     @map("edad_max")
+  capitulo         String?                                  @map("capitulo")
+  grupo            String?                                  @map("grupo")
+  subgrupo         String?                                  @map("subgrupo")
+  categoria        String?                                  @map("categoria")
+  habilitado       Boolean  @default(true)                  @map("habilitado")
+
+  // 🔹 Campo inverso para ClinicalNote.primaryDx
+  clinicalNotes    ClinicalNote[]
+
+  createdAt        DateTime @default(now())                 @map("created_at")
+  updatedAt        DateTime @updatedAt                      @map("updated_at")
+  deletedAt        DateTime?                                @map("deleted_at")
+  isActive         Boolean  @default(true)                  @map("is_active")
+
+  @@map("code_cie10")
+}
+model Cups {
+  code        String   @id                                   @map("code")            // ej "89.01.02"
+  name        String                                        @map("name")
+  description String?                                       @map("description")
+
+  // 🔹 inverso (opcional) a Procedure
+  procedures  Procedure[]
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("code_cups")
+}
+
+model AtcCode {
+  code        String   @id                                   @map("code")            // ej "C09DX01"
+  name        String?                                       @map("name")
+  level       Int?                                          @map("level")
+
+  // 🔹 inverso (opcional) a DrugCode
+  drugCodes   DrugCode[]
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("code_atc")
+}
+
 model DrugCode {
-  code        String    @id                                   @map("code")
-  displayName String                                         @map("display_name")
-  form        String?                                        @map("form")
-  route       String?                                        @map("route")
-  strength    String?                                        @map("strength")
-  actives     String?                                        @map("actives")
-  atcCode     String?                                        @map("atc_code")
-  isActive    Boolean   @default(true)                        @map("is_active")
+  code        String    @id                                  @map("code")
+  displayName String                                       @map("display_name")
+  form        String?                                      @map("form")
+  route       String?                                      @map("route")
+  strength    String?                                      @map("strength")
+  actives     String?                                      @map("actives")
+  atcCode     String?                                      @map("atc_code")
+  isActive    Boolean   @default(true)                      @map("is_active")
+
+  // Relación opcional a ATC
+  atc         AtcCode?  @relation(fields: [atcCode], references: [code])
 
   prescriptionItems PrescriptionItem[]
 
-  createdAt   DateTime   @default(now())                      @map("created_at")
-  updatedAt   DateTime   @updatedAt                           @map("updated_at")
-  deletedAt   DateTime?                                       @map("deleted_at")
+  createdAt   DateTime   @default(now())                    @map("created_at")
+  updatedAt   DateTime   @updatedAt                         @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
 
   @@map("drug_code")
 }
 
-// Prescripción
+/* =========================
+   PRESCRIPCIÓN
+   ========================= */
+
 model Prescription {
-  id          String   @id @default(uuid())                   @map("id")
-  encounterId String                                         @map("encounter_id")
-  issuerId    String                                         @map("issuer_id")
-  issuedAt    DateTime @default(now())                        @map("issued_at")
+  id          String   @id @default(uuid())                 @map("id")
+  encounterId String                                       @map("encounter_id")
+  issuerId    String                                       @map("issuer_id")
+  issuedAt    DateTime @default(now())                      @map("issued_at")
+
+  // (Opcional) Enlazar a una nota clínica específica:
+  // noteId     String?                                     @map("note_id")
+  // note       ClinicalNote? @relation(fields: [noteId], references: [id])
 
   encounter   Encounter  @relation(fields: [encounterId], references: [id])
   issuer      Provider   @relation(fields: [issuerId], references: [id])
   items       PrescriptionItem[]
 
-  createdAt   DateTime   @default(now())                      @map("created_at")
-  updatedAt   DateTime   @updatedAt                           @map("updated_at")
-  deletedAt   DateTime?                                       @map("deleted_at")
-  isActive    Boolean    @default(true)                       @map("is_active")
+  createdAt   DateTime   @default(now())                    @map("created_at")
+  updatedAt   DateTime   @updatedAt                         @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean    @default(true)                     @map("is_active")
 
   @@map("prescription")
 }
 
-// Ítem de la prescripción
 model PrescriptionItem {
-  id                 String   @id @default(uuid())            @map("id")
+  id                 String   @id @default(uuid())          @map("id")
   prescriptionId     String                                   @map("prescription_id")
-  drugCodeId         String?                                  @map("drug_code")
+  drugCodeId         String?                                  @map("drug_code")      // FK a DrugCode.code
   freeText           String?                                  @map("free_text")
   doseAmount         Decimal?                                 @map("dose_amount")
   doseUnit           String?                                  @map("dose_unit")
@@ -157,4 +272,259 @@ model PrescriptionItem {
   isActive           Boolean    @default(true)                @map("is_active")
 
   @@map("prescription_item")
+}
+
+/* =========================
+   RIPS (LOTE + ARCHIVOS)
+   ========================= */
+
+model RipsBatch {
+  id               String   @id @default(uuid())             @map("id")
+  providerCode     String                                   @map("provider_code")   // código habilitación
+  payerName        String?                                  @map("payer_name")      // o id si modelas payer
+  periodStart      DateTime                                 @map("period_start")
+  periodEnd        DateTime                                 @map("period_end")
+  status           String   @default("abierto")              @map("status")         // 'abierto'|'cerrado'|'exportado'
+
+  items            RipsBatchItem[]
+  us               RipsUS[]
+  af               RipsAF[]
+  ac               RipsAC[]
+  ap               RipsAP[]
+  am               RipsAM[]
+  ah               RipsAH[]
+  au               RipsAU[]
+  at               RipsAT[]
+
+  createdAt        DateTime @default(now())                  @map("created_at")
+  updatedAt        DateTime @updatedAt                       @map("updated_at")
+  deletedAt        DateTime?                                 @map("deleted_at")
+  isActive         Boolean  @default(true)                   @map("is_active")
+
+  @@map("rips_batch")
+}
+
+model RipsBatchItem {
+  id          String   @id @default(uuid())                  @map("id")
+  batchId     String                                        @map("batch_id")
+  encounterId String                                        @map("encounter_id")
+
+  batch       RipsBatch  @relation(fields: [batchId], references: [id])
+  encounter   Encounter  @relation(fields: [encounterId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@unique([batchId, encounterId])
+  @@map("rips_batch_item")
+}
+
+model RipsUS {
+  id            String   @id @default(uuid())                @map("id")
+  batchId       String                                      @map("batch_id")
+  patientId     String                                      @map("patient_id")
+  docType       String                                      @map("doc_type")
+  docNumber     String                                      @map("doc_number")
+  epsCode       String?                                     @map("eps_code")
+  regimen       String?                                     @map("regimen")
+  municipality  String?                                     @map("municipality")
+  zone          String?                                     @map("zone")
+
+  batch         RipsBatch @relation(fields: [batchId], references: [id])
+  patient       Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt     DateTime @default(now())                    @map("created_at")
+  updatedAt     DateTime @updatedAt                         @map("updated_at")
+  deletedAt     DateTime?                                   @map("deleted_at")
+  isActive      Boolean  @default(true)                     @map("is_active")
+
+  @@unique([batchId, patientId])
+  @@map("rips_us")
+}
+
+model RipsAF {
+  id              String   @id @default(uuid())              @map("id")
+  batchId         String                                    @map("batch_id")
+  invoiceNumber   String                                    @map("invoice_number")
+  providerCode    String                                    @map("provider_code")
+  patientDocType  String                                    @map("patient_doc_type")
+  patientDocNum   String                                    @map("patient_doc_num")
+  issueDate       DateTime                                  @map("issue_date")
+  total           Decimal                                   @map("total")
+
+  batch           RipsBatch @relation(fields: [batchId], references: [id])
+
+  createdAt       DateTime @default(now())                  @map("created_at")
+  updatedAt       DateTime @updatedAt                       @map("updated_at")
+  deletedAt       DateTime?                                 @map("deleted_at")
+  isActive        Boolean  @default(true)                   @map("is_active")
+
+  @@unique([batchId, invoiceNumber])
+  @@map("rips_af")
+}
+
+model RipsAC {
+  id              String   @id @default(uuid())              @map("id")
+  batchId         String                                    @map("batch_id")
+  encounterId     String                                    @map("encounter_id")
+  patientId       String                                    @map("patient_id")
+  invoiceNumber   String                                    @map("invoice_number")
+  serviceDate     DateTime                                  @map("service_date")
+  finalidad       String?                                   @map("finalidad")
+  causaExterna    String?                                   @map("causa_externa")
+  dxPrincipal     String?                                   @map("dx_principal")
+  dxRel1          String?                                   @map("dx_rel1")
+  dxRel2          String?                                   @map("dx_rel2")
+  tipoDxPrincipal String?                                   @map("tipo_dx_principal")
+  valorConsulta   Decimal                                   @map("valor_consulta")
+  valorCuota      Decimal   @default(0)                      @map("valor_cuota")
+  netoPagar       Decimal   @default(0)                      @map("neto_pagar")
+
+  batch       RipsBatch @relation(fields: [batchId], references: [id])
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("rips_ac")
+}
+
+model RipsAP {
+  id                 String   @id @default(uuid())           @map("id")
+  batchId            String                                  @map("batch_id")
+  encounterId        String                                  @map("encounter_id")
+  patientId          String                                  @map("patient_id")
+  invoiceNumber      String                                  @map("invoice_number")
+  procedureDate      DateTime                                @map("procedure_date")
+  ambito             String?                                 @map("ambito")
+  finalidad          String?                                 @map("finalidad")
+  personalAtiende    String?                                 @map("personal_atiende")
+  cupsCode           String?                                 @map("cups_code")
+  dxPrincipal        String?                                 @map("dx_principal")
+  dxRel1             String?                                 @map("dx_rel1")
+  complicacion       String?                                 @map("complicacion")
+  formaRealizacion   String?                                 @map("forma_realizacion")
+  valorProcedimiento Decimal                                 @map("valor_procedimiento")
+
+  batch       RipsBatch @relation(fields: [batchId], references: [id])
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("rips_ap")
+}
+
+model RipsAM {
+  id              String   @id @default(uuid())              @map("id")
+  batchId         String                                    @map("batch_id")
+  encounterId     String                                    @map("encounter_id")
+  patientId       String                                    @map("patient_id")
+  invoiceNumber   String                                    @map("invoice_number")
+  drugCode        String?                                   @map("drug_code")        // CUM/IUM si aplica
+  drugName        String                                    @map("drug_name")
+  form            String?                                   @map("form")
+  route           String?                                   @map("route")
+  atcCode         String?                                   @map("atc_code")
+  dose            Decimal?                                  @map("dose")
+  doseUnit        String?                                   @map("dose_unit")
+  frequency       String?                                   @map("frequency")
+  duration        String?                                   @map("duration")
+  quantity        Decimal                                   @map("quantity")
+  unitPrice       Decimal                                   @map("unit_price")
+  totalPrice      Decimal                                   @map("total_price")
+
+  batch       RipsBatch @relation(fields: [batchId], references: [id])
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("rips_am")
+}
+
+model RipsAH {
+  id                String   @id @default(uuid())            @map("id")
+  batchId           String                                  @map("batch_id")
+  encounterId       String                                  @map("encounter_id")
+  patientId         String                                  @map("patient_id")
+  invoiceNumber     String                                  @map("invoice_number")
+  admitAt           DateTime                                @map("admit_at")
+  dischargeAt       DateTime?                               @map("discharge_at")
+  dxIngreso         String?                                 @map("dx_ingreso")
+  dxEgresoPrincipal String?                                 @map("dx_egreso_principal")
+  dxEgresoRel1      String?                                 @map("dx_egreso_rel1")
+  dxEgresoRel2      String?                                 @map("dx_egreso_rel2")
+  condicionEgreso   String?                                 @map("condicion_egreso")
+  causaMuerte       String?                                 @map("causa_muerte")
+
+  batch       RipsBatch @relation(fields: [batchId], references: [id])
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("rips_ah")
+}
+
+model RipsAU {
+  id              String   @id @default(uuid())              @map("id")
+  batchId         String                                    @map("batch_id")
+  encounterId     String                                    @map("encounter_id")
+  patientId       String                                    @map("patient_id")
+  invoiceNumber   String                                    @map("invoice_number")
+  admitAt         DateTime                                  @map("admit_at")
+  leaveAt         DateTime?                                 @map("leave_at")
+  dxPrincipal     String?                                   @map("dx_principal")
+  dxRel1          String?                                   @map("dx_rel1")
+  destinoEgreso   String?                                   @map("destino_egreso")
+
+  batch       RipsBatch @relation(fields: [batchId], references: [id])
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("rips_au")
+}
+
+model RipsAT {
+  id            String   @id @default(uuid())                @map("id")
+  batchId       String                                      @map("batch_id")
+  encounterId   String                                      @map("encounter_id")
+  patientId     String                                      @map("patient_id")
+  invoiceNumber String                                      @map("invoice_number")
+  serviceCode   String                                      @map("service_code")
+  serviceName   String                                      @map("service_name")
+  quantity      Decimal                                     @map("quantity")
+  unitPrice     Decimal                                     @map("unit_price")
+  totalPrice    Decimal                                     @map("total_price")
+
+  batch       RipsBatch @relation(fields: [batchId], references: [id])
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  patient     Patient   @relation(fields: [patientId], references: [id])
+
+  createdAt   DateTime @default(now())                      @map("created_at")
+  updatedAt   DateTime @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                     @map("deleted_at")
+  isActive    Boolean  @default(true)                       @map("is_active")
+
+  @@map("rips_at")
 }
