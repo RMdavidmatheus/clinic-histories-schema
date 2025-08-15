@@ -1,0 +1,160 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Paciente
+model Patient {
+  id              String      @id @default(uuid())           @map("id")
+  documentType    String                                      @map("document_type")
+  documentNumber  String                                      @map("document_number")
+  firstName       String?                                     @map("first_name")
+  lastName        String?                                     @map("last_name")
+  birthDate       DateTime?                                   @map("birth_date")
+
+  encounters      Encounter[]
+
+  createdAt       DateTime   @default(now())                  @map("created_at")
+  updatedAt       DateTime   @updatedAt                       @map("updated_at")
+  deletedAt       DateTime?                                   @map("deleted_at")
+  isActive        Boolean    @default(true)                   @map("is_active")
+
+  @@unique([documentType, documentNumber])
+  @@map("patient")
+}
+
+// Prestador
+model Provider {
+  id               String      @id @default(uuid())          @map("id")
+  name             String                                     @map("name")
+  licenseNumber    String?                                    @map("license_number")
+
+  encounters       Encounter[]
+  clinicalNotes    ClinicalNote[]
+  prescriptions    Prescription[]  // <-- relación inversa con issuer
+
+  createdAt        DateTime   @default(now())                 @map("created_at")
+  updatedAt        DateTime   @updatedAt                      @map("updated_at")
+  deletedAt        DateTime?                                  @map("deleted_at")
+  isActive         Boolean    @default(true)                  @map("is_active")
+
+  @@map("provider")
+}
+
+// Encuentro
+model Encounter {
+  id            String        @id @default(uuid())            @map("id")
+  patientId     String                                        @map("patient_id")
+  providerId    String?                                       @map("provider_id")
+  billingMode   String                                        @map("billing_mode")
+  startAt       DateTime      @default(now())                 @map("start_at")
+  endAt         DateTime?                                     @map("end_at")
+  type          String                                        @map("type")
+
+  clinicalNotes ClinicalNote[]
+  prescriptions Prescription[]
+
+  patient       Patient    @relation(fields: [patientId], references: [id])
+  provider      Provider?  @relation(fields: [providerId], references: [id])
+
+  createdAt     DateTime   @default(now())                    @map("created_at")
+  updatedAt     DateTime   @updatedAt                         @map("updated_at")
+  deletedAt     DateTime?                                     @map("deleted_at")
+  isActive      Boolean    @default(true)                     @map("is_active")
+
+  @@map("encounter")
+}
+
+// Nota clínica
+model ClinicalNote {
+  id          String    @id @default(uuid())                  @map("id")
+  encounterId String                                        @map("encounter_id")
+  authorId    String                                        @map("author_id")
+  noteType    String                                        @map("note_type")
+  body        String?                                       @map("body")
+
+  encounter   Encounter @relation(fields: [encounterId], references: [id])
+  author      Provider  @relation(fields: [authorId], references: [id])
+
+  createdAt   DateTime   @default(now())                      @map("created_at")
+  updatedAt   DateTime   @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                       @map("deleted_at")
+  isActive    Boolean    @default(true)                       @map("is_active")
+
+  @@map("clinical_note")
+}
+
+// Catálogo de medicamentos
+model DrugCode {
+  code        String    @id                                   @map("code")
+  displayName String                                         @map("display_name")
+  form        String?                                        @map("form")
+  route       String?                                        @map("route")
+  strength    String?                                        @map("strength")
+  actives     String?                                        @map("actives")
+  atcCode     String?                                        @map("atc_code")
+  isActive    Boolean   @default(true)                        @map("is_active")
+
+  prescriptionItems PrescriptionItem[]
+
+  createdAt   DateTime   @default(now())                      @map("created_at")
+  updatedAt   DateTime   @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                       @map("deleted_at")
+
+  @@map("drug_code")
+}
+
+// Prescripción
+model Prescription {
+  id          String   @id @default(uuid())                   @map("id")
+  encounterId String                                         @map("encounter_id")
+  issuerId    String                                         @map("issuer_id")
+  issuedAt    DateTime @default(now())                        @map("issued_at")
+
+  encounter   Encounter  @relation(fields: [encounterId], references: [id])
+  issuer      Provider   @relation(fields: [issuerId], references: [id])
+  items       PrescriptionItem[]
+
+  createdAt   DateTime   @default(now())                      @map("created_at")
+  updatedAt   DateTime   @updatedAt                           @map("updated_at")
+  deletedAt   DateTime?                                       @map("deleted_at")
+  isActive    Boolean    @default(true)                       @map("is_active")
+
+  @@map("prescription")
+}
+
+// Ítem de la prescripción
+model PrescriptionItem {
+  id                 String   @id @default(uuid())            @map("id")
+  prescriptionId     String                                   @map("prescription_id")
+  drugCodeId         String?                                  @map("drug_code")
+  freeText           String?                                  @map("free_text")
+  doseAmount         Decimal?                                 @map("dose_amount")
+  doseUnit           String?                                  @map("dose_unit")
+  route              String?                                  @map("route")
+  frequency          String?                                  @map("frequency")
+  duration           String?                                  @map("duration")
+  qty                Decimal?                                 @map("qty")
+  allowGenericSub    Boolean  @default(true)                  @map("allow_generic_sub")
+
+  prescription       Prescription @relation(fields: [prescriptionId], references: [id])
+  drug               DrugCode?    @relation(fields: [drugCodeId], references: [code])
+
+  createdAt          DateTime   @default(now())               @map("created_at")
+  updatedAt          DateTime   @updatedAt                    @map("updated_at")
+  deletedAt          DateTime?                                @map("deleted_at")
+  isActive           Boolean    @default(true)                @map("is_active")
+
+  @@map("prescription_item")
+}
